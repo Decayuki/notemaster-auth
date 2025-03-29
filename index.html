@@ -8,166 +8,184 @@
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
             margin: 0;
-            background-color: #f5f5f5;
         }
         .auth-container {
             background-color: white;
-            padding: 2rem;
-            border-radius: 8px;
+            border-radius: 10px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            width: 400px;
+            max-width: 90%;
             text-align: center;
-            max-width: 400px;
-            width: 100%;
         }
         h1 {
             color: #333;
-            margin-bottom: 1.5rem;
+            margin-bottom: 30px;
         }
-        .btn-google {
+        .logo {
+            width: 80px;
+            margin-bottom: 20px;
+        }
+        button {
             background-color: #4285F4;
             color: white;
-            padding: 12px 24px;
             border: none;
-            border-radius: 4px;
+            padding: 12px 24px;
+            border-radius: 5px;
             font-size: 16px;
+            font-weight: bold;
             cursor: pointer;
-            display: inline-flex;
+            display: flex;
             align-items: center;
-            transition: background-color 0.3s;
+            justify-content: center;
+            margin: 0 auto;
+            gap: 10px;
         }
-        .btn-google:hover {
-            background-color: #357ae8;
-        }
-        .btn-google img {
-            margin-right: 10px;
-            height: 18px;
-        }
-        #status {
-            margin-top: 20px;
-            color: #666;
-        }
-        .loader {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #3498db;
-            border-radius: 50%;
+        button img {
             width: 20px;
             height: 20px;
-            animation: spin 1s linear infinite;
-            display: none;
-            margin: 20px auto;
         }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .loading {
+            background-color: #fff3cd;
+            color: #856404;
         }
     </style>
 </head>
 <body>
     <div class="auth-container">
+        <img src="https://raw.githubusercontent.com/Decayuki/NoteMaster-v2/main/src/assets/logo.png" alt="NoteMaster Logo" class="logo">
         <h1>NoteMaster</h1>
-        <p>Connectez-vous pour accéder à vos notes personnelles</p>
+        <p>Connectez-vous avec Google pour accéder à vos notes et quiz.</p>
         
-        <button id="login-btn" class="btn-google">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" alt="Google Logo">
+        <button id="google-signin">
+            <img src="https://www.google.com/favicon.ico" alt="Google Logo">
             Se connecter avec Google
         </button>
         
-        <div class="loader" id="loader"></div>
-        <p id="status"></p>
+        <div id="status" style="display: none;"></div>
     </div>
 
     <script>
-        // Configuration Supabase - À remplacer par vos propres identifiants
-        const SUPABASE_URL = 'VOTRE_URL_SUPABASE';
-        const SUPABASE_KEY = 'VOTRE_CLE_PUBLIQUE_SUPABASE';
+        // Configuration Supabase
+        const SUPABASE_URL = 'https://rygktzcbjsigbfkodobx.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ5Z2t0emNianNpZ2Jma29kb2J4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTEyMDIyNzgsImV4cCI6MjAyNjc3ODI3OH0.e5Hja0ZgZN-5GfZNMS2-wZHGLRvC3C49UvpJ0yPHuUk';
+        const REDIRECT_URL = 'https://notemaster-v2-jkvg9zktfpwttpjuxzwcpe.streamlit.app';
         
-        // Application Streamlit URL
-        const STREAMLIT_APP_URL = 'VOTRE_URL_APPLICATION_STREAMLIT';
+        // Initialisation de Supabase - correction de l'accès
+        const { createClient } = supabase;
+        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
         
-        // Initialisation du client Supabase
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-        
-        // Éléments DOM
-        const loginBtn = document.getElementById('login-btn');
-        const status = document.getElementById('status');
-        const loader = document.getElementById('loader');
-
-        // Fonction pour extraire les paramètres de l'URL
-        function getUrlParams() {
-            const params = new URLSearchParams(window.location.search);
-            const redirectUrl = params.get('redirect_url') || STREAMLIT_APP_URL;
-            return { redirectUrl };
+        // Fonctions d'aide
+        function showStatus(message, type) {
+            const statusElement = document.getElementById('status');
+            statusElement.textContent = message;
+            statusElement.className = `status ${type}`;
+            statusElement.style.display = 'block';
         }
-
-        // Authentification avec Google
-        loginBtn.addEventListener('click', async () => {
-            const { redirectUrl } = getUrlParams();
+        
+        // Vérifier si nous revenons d'une authentification
+        window.addEventListener('load', async () => {
+            // Récupérer le hash de l'URL après authentification
+            const hash = window.location.hash;
             
-            // Afficher le chargement
-            loginBtn.disabled = true;
-            loader.style.display = 'block';
-            status.textContent = 'Redirection vers Google...';
-
-            try {
-                const { data, error } = await supabase.auth.signInWithOAuth({
-                    provider: 'google',
-                    options: {
-                        redirectTo: window.location.origin + window.location.pathname + '?callback=true&redirect_url=' + encodeURIComponent(redirectUrl)
-                    }
-                });
-
-                if (error) throw error;
-            } catch (error) {
-                console.error('Erreur d\'authentification:', error);
-                status.textContent = 'Erreur lors de l\'authentification. Veuillez réessayer.';
-                loginBtn.disabled = false;
-                loader.style.display = 'none';
-            }
-        });
-
-        // Fonction pour gérer le callback après authentification
-        async function handleAuthCallback() {
-            const params = new URLSearchParams(window.location.search);
-            const isCallback = params.get('callback') === 'true';
-            const redirectUrl = params.get('redirect_url') || STREAMLIT_APP_URL;
-
-            if (isCallback) {
-                loader.style.display = 'block';
-                status.textContent = 'Authentification en cours...';
-
+            // Afficher les paramètres pour débogage
+            console.log('État de l\'URL au chargement:', { 
+                hash: window.location.hash,
+                search: window.location.search,
+                href: window.location.href
+            });
+            
+            if (hash && hash.includes('access_token')) {
+                showStatus('Authentification réussie ! Redirection...', 'loading');
+                
                 try {
-                    // Récupération du token d'accès
-                    const { data, error } = await supabase.auth.getSession();
+                    // Extraire directement le token du hash URL
+                    const accessToken = hash.match(/access_token=([^&]*)/)[1];
                     
-                    if (error) throw error;
-                    
-                    if (data && data.session) {
-                        const { access_token, refresh_token } = data.session;
-                        
-                        status.textContent = 'Authentification réussie! Redirection...';
-                        
-                        // Redirection vers l'application Streamlit avec les tokens
-                        const redirectUrlWithToken = `${redirectUrl}?access_token=${access_token}&refresh_token=${refresh_token}`;
-                        window.location.href = redirectUrlWithToken;
+                    if (accessToken) {
+                        console.log('Token récupéré:', accessToken.substring(0, 10) + '...');
+                        // Rediriger vers l'application Streamlit principale (pas la page /auth)
+                        window.location.href = `${REDIRECT_URL}?token=${accessToken}`;
                     } else {
-                        throw new Error('Aucune session trouvée');
+                        showStatus('Erreur : Token non trouvé dans l\'URL.', 'error');
                     }
                 } catch (error) {
-                    console.error('Erreur callback:', error);
-                    status.textContent = 'Erreur lors de l\'authentification. Veuillez réessayer.';
-                    loginBtn.disabled = false;
-                    loader.style.display = 'none';
+                    showStatus(`Erreur : ${error.message}`, 'error');
+                    console.error(error);
+                    
+                    // Plan B: Essayer d'obtenir la session de Supabase
+                    try {
+                        const { data, error } = await supabaseClient.auth.getSession();
+                        
+                        if (error) throw error;
+                        
+                        if (data && data.session) {
+                            // Rediriger vers l'application Streamlit avec le token
+                            const token = data.session.access_token;
+                            console.log('Token obtenu via getSession:', token.substring(0, 10) + '...');
+                            window.location.href = `${REDIRECT_URL}?token=${token}`;
+                        } else {
+                            showStatus('Erreur : Session non trouvée.', 'error');
+                        }
+                    } catch (secondError) {
+                        showStatus(`Erreur secondaire : ${secondError.message}`, 'error');
+                        console.error('Erreur secondaire:', secondError);
+                    }
                 }
             }
-        }
-
-        // Vérifier si nous sommes dans un callback d'authentification
-        window.onload = handleAuthCallback;
+        });
+        
+        // Gestionnaire de clic pour le bouton de connexion
+        document.getElementById('google-signin').addEventListener('click', async () => {
+            showStatus('Redirection vers Google...', 'loading');
+            
+            try {
+                // Utilisation du client Supabase correct
+                const { data, error } = await supabaseClient.auth.signInWithOAuth({
+                    provider: 'google',
+                    options: {
+                        redirectTo: window.location.origin + window.location.pathname,
+                        queryParams: {
+                            access_type: 'offline',
+                            prompt: 'select_account'
+                        }
+                    }
+                });
+                
+                if (error) throw error;
+                
+                console.log('Données de redirection:', data);
+                
+                // Rediriger vers l'URL d'authentification Google
+                if (data && data.url) {
+                    window.location.href = data.url;
+                } else {
+                    showStatus('Erreur: URL de redirection non reçue de Supabase', 'error');
+                }
+            } catch (error) {
+                showStatus(`Erreur : ${error.message}`, 'error');
+                console.error(error);
+            }
+        });
     </script>
 </body>
 </html>
